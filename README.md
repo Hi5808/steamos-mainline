@@ -63,8 +63,15 @@ Env knobs: `GAME_USER`, `DRIVER_SO` (required), `NVME_DEV`, `NVME_FORMAT=1`,
   `Renderer: zink Vulkan ...` and `failed to load driver: panthor`. (Verified on
   Vampire Survivors.) More generally: **prefer Vulkan over OpenGL** for any native
   Linux title — GL is the broken path here.
-- **D3D games (Proton) → set Proton Experimental** as the compatibility tool
-  (Properties > Compatibility). They go D3D → DXVK/VKD3D → Vulkan, which works.
+- **D3D games (Proton): prefer the native ARM64 Proton.** Two Proton builds ship
+  with the ARM Steam client — x86_64 and **"Proton Experimental (ARM64)"**. The
+  x86_64 one runs its graphics stack as x86 and relies on the FEX Vulkan thunk,
+  which does **not** bridge **DXVK/D3D11** to the Mali GPU → it falls back to
+  software (`llvmpipe`), i.e. slow/tiny. The **ARM64 Proton's DXVK is native and
+  talks to the Mali Vulkan driver directly** → D3D11 renders on the GPU. Set it in
+  Properties > Compatibility > force "Proton Experimental (ARM64)". (Verified: Cuphead
+  = software on x86_64 Proton, full Mali-G610 GPU on ARM64 Proton.) D3D12/VKD3D games
+  (e.g. GnG) work on either, since VKD3D engages the thunk anyway.
 - **Native-Linux renderer not on screen in the Proton container?** Native titles
   run on the host directly (the Mesa Vulkan overlay HUD works for them); Proton
   titles run in the pressure-vessel sandbox (overlay env is remapped).
