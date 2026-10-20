@@ -75,6 +75,13 @@ Env knobs: `GAME_USER`, `DRIVER_SO` (required), `NVME_DEV`, `NVME_FORMAT=1`,
 - **Native-Linux renderer not on screen in the Proton container?** Native titles
   run on the host directly (the Mesa Vulkan overlay HUD works for them); Proton
   titles run in the pressure-vessel sandbox (overlay env is remapped).
+- **Game "stuck forever on Vulkan shaders" at launch?** That's Steam's Fossilize
+  shader pre-caching (`fossilize_replay`) compiling the cache before launch — under
+  FEX it pegs the CPU for 10–20+ min. Disable it: Steam Settings > Downloads >
+  Shader Pre-Caching > off "Allow background processing of Vulkan shaders". (If the
+  trimmed ARM client doesn't expose the toggle, a tiny service that `pkill -9 -f
+  fossilize_replay` on a loop works too.) Games then launch instantly and compile
+  shaders on-demand (minor first-time hitches).
 
 ## Game compatibility & anti-cheat (what actually runs)
 
@@ -91,6 +98,22 @@ x86 Steam Deck still fail here because the anti-cheat runtime won't load inside 
 the bleeding-edge path (patched FEX + x86-64 Proton + `PROTON_EAC_RUNTIME`) at best
 reaches a title screen and crashes. **Treat all anti-cheat games as unsupported.** The
 working target is the huge no-anti-cheat library.
+
+### Tested games
+
+| Game | Engine / API | Result |
+|---|---|---|
+| Ghosts 'n Goblins Resurrection | D3D12 / VKD3D | ✅ GPU |
+| Vampire Survivors | Unity (`-force-vulkan`) | ✅ GPU |
+| Cuphead | Unity D3D11 | ✅ GPU (needs ARM64 Proton) |
+| Sniper Elite 3 | Asura D3D11 (2014) | ✅ works |
+| Brawlhalla | D3D11 | ⚠️ GPU but memory-bound on 8 GB (swaps; smooth on 16 GB) |
+| DOOM Eternal | idTech 7 Vulkan | ❌ engine rejects the GPU (too demanding for Mali-G610) |
+| Delta Force | ACE kernel anti-cheat | ❌ anti-cheat |
+| Halo Infinite | EAC | ❌ anti-cheat (EAC won't load under FEX, err 206) |
+
+**Rule of thumb:** indie, 2D, and older/mid-tier 3D (D3D11/12) play well; top-tier
+AAA Vulkan engines (idTech 7 etc.) exceed the Mali-G610, and anti-cheat is a hard no.
 
 ## Honest limitations
 
