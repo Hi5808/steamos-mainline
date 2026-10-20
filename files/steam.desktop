@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Steam (SteamOS-Mainline)
+Comment=Native aarch64 Steam client
+Exec=/usr/local/bin/steam-play
+Icon=steam
+Terminal=false
+Categories=Game;
+StartupNotify=true

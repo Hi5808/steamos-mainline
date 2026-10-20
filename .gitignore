@@ -1,0 +1,6 @@
+*.img
+*.img.*
+*.zst
+*.tar
+sd-root-pass.txt
+*.token

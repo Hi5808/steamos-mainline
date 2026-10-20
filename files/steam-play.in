@@ -1,0 +1,43 @@
+#!/bin/bash
+# steam-play [APPID]  -- launch Steam (and optionally a game) with every
+# ARM/FEX/Proton/display/perf fix applied. Run as the game user inside the
+# desktop session. @GAME_USER@ / @UID@ are substituted at install time.
+#
+# With no APPID it just starts Steam (log in with the QR code the first time).
+# With an APPID it starts Steam if needed, then launches that game.
+set -u
+U=@GAME_USER@
+UID_=@UID@
+export HOME=/home/$U
+export XDG_RUNTIME_DIR=/run/user/$UID_
+export WAYLAND_DISPLAY=wayland-0 DISPLAY=:0
+export XAUTHORITY=$(ls /run/user/$UID_/.mutter-Xwaylandauth.* 2>/dev/null | head -1)
+
+# The pressure-vessel container can't see the session's Xauth cookie; allow
+# local X connections so SDL3/Xalia/DXVK can open the display inside the sandbox.
+xhost +local: >/dev/null 2>&1
+xhost +SI:localuser:$U >/dev/null 2>&1
+
+# Max out CPU/GPU/fan for the duration (run `game-perf off` when done).
+sudo /usr/local/sbin/game-perf on >/dev/null 2>&1
+
+# FEX x86->ARM speed levers (Valve's fex-compat-tool honours these):
+#   MULTIBLOCK=1  bigger JIT translation blocks
+#   TSOENABLED=0  skip strict x86 memory-ordering emulation (big speedup;
+#                 re-enable if a multithreaded game misbehaves)
+export STEAM_FEX_MULTIBLOCK=1 STEAM_FEX_TSOENABLED=0
+
+# On-screen FPS/frame-timing via the Mesa Vulkan overlay (works for VKD3D/DXVK).
+export VK_INSTANCE_LAYERS=VK_LAYER_MESA_overlay
+export VK_LAYER_MESA_OVERLAY_CONFIG=position=top-left,fps,frame_timing
+
+cd "$HOME/.local/share/Steam" || { echo "Steam not installed for $U"; exit 1; }
+pgrep -u "$U" -f steamwebhelper >/dev/null || {
+  nohup ./steamrtarm64/steam -no-cef-sandbox >"$HOME/steam.log" 2>&1 &
+  sleep 25
+}
+if [ -n "${1:-}" ]; then
+  exec ./steamrtarm64/steam -applaunch "$1"
+else
+  exec ./steamrtarm64/steam -no-cef-sandbox
+fi

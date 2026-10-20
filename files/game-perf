@@ -1,0 +1,21 @@
+#!/bin/bash
+# game-perf on|off -- CPU/GPU performance governors + fan for gaming on RK3588.
+# Pins the A76 big cores and the Mali-G610 to max clock (the GPU otherwise idles
+# at 300 MHz under simple_ondemand). Reverts to ondemand when off.
+set -u
+G=$(ls -d /sys/class/devfreq/*gpu* 2>/dev/null | head -1)   # e.g. /sys/class/devfreq/fb000000.gpu
+case "${1:-}" in
+  on)
+    for p in /sys/devices/system/cpu/cpufreq/policy*; do echo performance > "$p/scaling_governor"; done
+    [ -n "$G" ] && echo performance > "$G/governor"
+    for h in /sys/class/hwmon/hwmon*; do [ -w "$h/pwm1" ] && echo 255 > "$h/pwm1"; done 2>/dev/null
+    echo "PERF ON${G:+: GPU=$(($(cat "$G/cur_freq")/1000000))MHz} CPUbig=$(($(cat /sys/devices/system/cpu/cpufreq/policy4/scaling_cur_freq 2>/dev/null || echo 0)/1000))MHz"
+    ;;
+  off)
+    for p in /sys/devices/system/cpu/cpufreq/policy*; do echo ondemand > "$p/scaling_governor"; done
+    [ -n "$G" ] && echo simple_ondemand > "$G/governor"
+    for h in /sys/class/hwmon/hwmon*; do [ -w "$h/pwm1" ] && echo 120 > "$h/pwm1"; done 2>/dev/null
+    echo "PERF OFF (ondemand)"
+    ;;
+  *) echo "usage: game-perf on|off"; exit 1 ;;
+esac

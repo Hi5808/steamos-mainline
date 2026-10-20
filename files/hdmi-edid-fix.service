@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply HDMI EDID override before the display manager (rockchip dw-hdmi-qp RGB workaround)
+Before=gdm3.service display-manager.service
+After=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hdmi-edid-fix.sh
+
+[Install]
+WantedBy=graphical.target
