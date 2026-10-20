@@ -6,7 +6,7 @@ running **x86 Windows games** through **FEX + Proton + VKD3D/DXVK** on an
 **open-source Mali-G610 Vulkan driver**, out an **HDMI** display.
 
 This is the clean, data-free packaging of the hand-built system in
-[`../research/RESEARCH.md`](../research/RESEARCH.md). Run one script on the board.
+[`RESEARCH.md`](RESEARCH.md). Run one script on the board.
 
 ## What it sets up
 
@@ -34,7 +34,7 @@ This is the clean, data-free packaging of the hand-built system in
 - An NVMe SSD (library + swap) and an HDMI display + USB keyboard/controller.
 - FEX-Emu installed (for `FEXRootFSFetcher`), or a FEX `Ubuntu_24_04.sqsh` to pass in.
 - **The feature-complete Mali Vulkan driver** `libvulkan_panfrost.so`
-  (PanVK-kbase). Build it per `research/RESEARCH.md` §13, then pass its path as
+  (PanVK-kbase). Build it per `RESEARCH.md` §13, then pass its path as
   `DRIVER_SO`. The stock distro Mesa will **not** work — DXVK/VKD3D reject it.
 
 ## Usage
