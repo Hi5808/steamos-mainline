@@ -1,0 +1,28 @@
+#!/bin/bash
+# game-perf on|off  -- RK1 (Turing Pi the RK1) gaming performance toggle.
+# Pins A76 big cores, Mali-G610, and the DMC (DRAM controller) to max, bumps the
+# fan, and STOPS k3s for the duration so the game gets the whole node. `off`
+# reverts governors and restarts k3s. (Studio deployments stay at whatever
+# replica count they were left at.)
+set -u
+G=$(ls -d /sys/class/devfreq/*gpu* 2>/dev/null | head -1)      # fb000000.gpu
+DMC=$(ls -d /sys/class/devfreq/dmc 2>/dev/null | head -1)      # 528->2112 MHz
+case "${1:-}" in
+  on)
+    systemctl stop k3s 2>/dev/null || true
+    for p in /sys/devices/system/cpu/cpufreq/policy*; do echo performance > "$p/scaling_governor" 2>/dev/null || true; done
+    [ -n "$G" ]   && echo performance    > "$G/governor"   2>/dev/null || true
+    [ -n "$DMC" ] && echo performance    > "$DMC/governor" 2>/dev/null || true
+    for h in /sys/class/hwmon/hwmon*; do [ -w "$h/pwm1" ] && echo 255 > "$h/pwm1" 2>/dev/null || true; done
+    echo "PERF ON (k3s stopped)${G:+ GPU=$(($(cat "$G/cur_freq")/1000000))MHz}${DMC:+ DMC=$(($(cat "$DMC/cur_freq")/1000000))MHz}"
+    ;;
+  off)
+    for p in /sys/devices/system/cpu/cpufreq/policy*; do echo ondemand > "$p/scaling_governor" 2>/dev/null || true; done
+    [ -n "$G" ]   && echo simple_ondemand > "$G/governor"   2>/dev/null || true
+    [ -n "$DMC" ] && echo dmc_ondemand    > "$DMC/governor" 2>/dev/null || true
+    for h in /sys/class/hwmon/hwmon*; do [ -w "$h/pwm1" ] && echo 120 > "$h/pwm1" 2>/dev/null || true; done
+    systemctl start k3s 2>/dev/null || true
+    echo "PERF OFF (ondemand; k3s restarted)"
+    ;;
+  *) echo "usage: game-perf on|off"; exit 1 ;;
+esac

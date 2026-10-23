@@ -1,0 +1,91 @@
+#!/bin/bash
+# steam-play [APPID]  -- RK1 launcher: native aarch64 Steam Big Picture on
+# the HDMI display, Mali PanVK-kbase fix20 driver + FEX speed levers applied.
+# Compositor = weston (see notes near the launch). Run as the game user on seat0
+# (a tty login, or steam-kiosk.service). @GAME_USER@ / @UID@ substituted at install.
+set -u
+U=@GAME_USER@
+UID_=@UID@
+export HOME=/home/$U
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$UID_}
+[ -d "$XDG_RUNTIME_DIR" ] || { mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"; chown "$U:$U" "$XDG_RUNTIME_DIR"; }
+
+# Need a session D-Bus bus (without one Steam's gamepadui/CEF inits then quits).
+[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || exec dbus-run-session -- "$0" "$@"
+
+# Feature-complete Mali-G610 Vulkan driver (PanVK-kbase fix20).
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/panvk-kbase.json
+export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
+
+# FEX x86->ARM speed levers (Valve's fex-compat-tool honours these).
+export STEAM_FEX_MULTIBLOCK=1 STEAM_FEX_TSOENABLED=0
+
+# Steam's GLX update window + CEF have no working GL on this Vulkan-only Mali-kbase
+# board; force GL clients to software (llvmpipe). Games render via Vulkan, unaffected.
+export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+
+# Max CPU/GPU/DMC/fan and free the node from k3s for the session.
+sudo /usr/local/sbin/game-perf on >/dev/null 2>&1 || true
+
+# Native aarch64 entrypoint (NOT the x86 steam.sh).
+STEAM="$HOME/.local/share/Steam/steamrtarm64/steam"
+[ -x "$STEAM" ] || { echo "Steam not installed for $U"; exit 1; }
+APPARG=(); [ -n "${1:-}" ] && APPARG=(-applaunch "$1")
+
+# Big Picture needs steamwebhelper; use plain Steam until first-run installs it.
+BPM="-gamepadui"; [ -x "$HOME/.local/share/Steam/ubuntu12_64/steamwebhelper" ] || BPM=""
+
+# HDMI connector's preferred mode (retry; safe 1280x720 fallback).
+MODE=""
+for t in 1 2 3 4 5; do
+  for c in /sys/class/drm/card*-HDMI-A-* /sys/class/drm/card*-DP-*; do
+    [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
+    MODE=$(head -1 "$c/modes" 2>/dev/null); [ -n "$MODE" ] && break
+  done
+  [ -n "$MODE" ] && break; sleep 1
+done
+OW=${MODE%x*}; OH=${MODE#*x}; [ -n "$OW" ] && [ -n "$OH" ] || { OW=1280; OH=720; }
+
+# Compositor = weston. Why weston (not gamescope or cage):
+#  * gamescope --backend drm can't scan out on the vendor 6.1 kernel (no syncobj /
+#    async-flip) -> frozen screen.
+#  * cage flips but its XWayland did not satisfy Steam's X11-only SDL
+#    ("SDL_Init: No available video device"); SDL has no wayland backend either.
+#  * weston drives the display with atomic modeset the VOP2 DOES support, AND its
+#    XWayland is the reference impl that SDL accepts. kiosk-shell fullscreens Steam.
+# pixman renderer: avoid depending on GLES/EGL on this Vulkan-only board.
+WREN="$HOME/.config/weston-kiosk.ini"
+mkdir -p "$HOME/.config"
+cat > "$WREN" <<EOF
+[core]
+shell=kiosk-shell.so
+xwayland=true
+idle-time=0
+require-input=false
+
+[output]
+name=HDMI-A-1
+mode=${OW}x${OH}@60
+EOF
+
+: > "$HOME/weston.log"
+weston --config="$WREN" --renderer=pixman --socket=wayland-steam \
+       --log="$HOME/weston.log" >>"$HOME/weston.log" 2>&1 &
+WPID=$!
+trap 'kill $WPID 2>/dev/null' EXIT
+
+# Wait for weston's wayland socket, then its XWayland DISPLAY.
+export WAYLAND_DISPLAY=wayland-steam
+for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-steam" ] && break; sleep 0.5; done
+DISP=""
+for i in $(seq 1 40); do
+  DISP=$(grep -oE "listening on display :[0-9]+" "$HOME/weston.log" 2>/dev/null | grep -oE ":[0-9]+" | head -1)
+  [ -z "$DISP" ] && DISP=$(ls /tmp/.X11-unix/X* 2>/dev/null | sed 's#.*/X#:#' | head -1)
+  [ -n "$DISP" ] && break; sleep 0.5
+done
+export DISPLAY=${DISP:-:0}
+
+# Steam as a fullscreen X11 client inside weston (kiosk-shell). -cef-disable-gpu*:
+# avoid CEF exit_on_context_lost on Mali-kbase.
+"$STEAM" $BPM -cef-disable-gpu-compositing -cef-disable-gpu -no-cef-sandbox "${APPARG[@]}" >"$HOME/steam.log" 2>&1
+kill $WPID 2>/dev/null
